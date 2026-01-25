@@ -51,15 +51,33 @@ export default function ComprobanteTransaccion({
     }).format(monto)
   }
 
-  const formatearFecha = (fecha: string) => {
-    const [year, month, day] = fecha.split('-').map(Number)
+  // En ComprobanteTransaccion.tsx
+const formatearFecha = (fecha: string) => {
+  try {
+    if (!fecha) return ''
+    
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return fecha
+    }
+    
     const fechaObj = new Date(year, month - 1, day)
+    
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
     return fechaObj.toLocaleDateString('es-AR', {
       day: '2-digit',
-      month: 'long',
+      month: '2-digit',
       year: 'numeric'
     })
+  } catch {
+    return fecha
   }
+}
 
   const handleImprimir = (e: React.MouseEvent) => {
     e.preventDefault()

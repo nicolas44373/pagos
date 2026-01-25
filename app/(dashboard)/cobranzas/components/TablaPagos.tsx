@@ -107,15 +107,36 @@ export default function TablaPagos({ transaccion, pagos, onPagoRegistrado }: Tab
     return diferencia
   }
 
-  const formatearFecha = (fecha: string) => {
-    const [year, month, day] = fecha.split('-').map(Number)
+  // En TablaPagos.tsx
+const formatearFecha = (fecha: string) => {
+  try {
+    if (!fecha) return ''
+    
+    // Extraer solo la parte de la fecha si viene con timestamp
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    // Validar que los valores sean números válidos
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return fecha
+    }
+    
     const fechaObj = new Date(year, month - 1, day)
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
     return fechaObj.toLocaleDateString('es-AR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric',
+      year: 'numeric'
     })
+  } catch {
+    return fecha
   }
+}
 
   const calcularInteresesSugeridos = (diasAtraso: number, montoBase: number) => {
     // Ejemplo: 1% por cada 30 días de atraso

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/app/lib/supabase'
 import { Producto } from '@/app/lib/types/cobranzas'
 import ComprobanteTransaccion from './Comprobantetransaccion'
+import { useAuth } from '../../../lib/auth.context'
 
 interface FormularioVentaProps {
   clienteId: string
@@ -16,6 +17,7 @@ export default function FormularioVenta({
   onVentaCreada,
   onCancelar,
 }: FormularioVentaProps) {
+   const { organization } = useAuth()
   const [guardando, setGuardando] = useState(false)
   const [mostrarComprobante, setMostrarComprobante] = useState(false)
   const [datosComprobante, setDatosComprobante] = useState<any>(null)
@@ -85,142 +87,155 @@ export default function FormularioVenta({
   }
 
   const crearNuevaVenta = async (e: React.FormEvent) => {
-    e.preventDefault()
+  e.preventDefault()
 
-    if (!validarFormulario() || !tipoTransaccion) return
+  if (!validarFormulario() || !tipoTransaccion) return
 
-    setGuardando(true)
-    try {
-      // Guardar monto original
-      const montoOriginal = parseFloat(formVenta.monto_total)
-      const porcentajeInteres = interes ? parseFloat(interes) : 0
+  // ⭐ VALIDAR QUE EXISTA LA ORGANIZACIÓN
+  if (!organization) {
+    alert('⚠️ No se encontró la organización')
+    return
+  }
+
+  setGuardando(true)
+  try {
+    // Guardar monto original
+    const montoOriginal = parseFloat(formVenta.monto_total)
+    const porcentajeInteres = interes ? parseFloat(interes) : 0
+    
+    // Calcular monto total con intereses
+    let montoTotalFinal = montoOriginal
+    if (interes) {
+      montoTotalFinal = montoOriginal + montoOriginal * (porcentajeInteres / 100)
+    }
+
+    const montoCuotaCalculado = montoTotalFinal / parseInt(formVenta.numero_cuotas)
+
+    // Obtener datos del cliente
+    const { data: clienteData } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('id', clienteId)
+      .single()
+
+    if (!clienteData) throw new Error('Cliente no encontrado')
+
+    // Obtener datos del producto si es venta
+    let productoNombre = null
+    if (tipoTransaccion === 'venta' && formVenta.producto_id) {
+      const { data: productoData } = await supabase
+        .from('productos')
+        .select('nombre')
+        .eq('id', formVenta.producto_id)
+        .single()
       
-      // Calcular monto total con intereses
-      let montoTotalFinal = montoOriginal
-      if (interes) {
-        montoTotalFinal = montoOriginal + montoOriginal * (porcentajeInteres / 100)
-      }
+      productoNombre = productoData?.nombre
+    }
 
-      const montoCuotaCalculado = montoTotalFinal / parseInt(formVenta.numero_cuotas)
+    // ⭐ Generar número de factura único
+    const numeroFactura = `FAC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`
 
-      // Obtener datos del cliente
-      const { data: clienteData } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('id', clienteId)
-        .single()
+    // Crear transacción
+    const { data: transData, error: transError } = await supabase
+      .from('transacciones')
+      .insert({
+        cliente_id: clienteId,
+        producto_id: tipoTransaccion === 'venta' ? formVenta.producto_id : null,
+        tipo: tipoTransaccion, // ✅ USAR ESTO
+        monto_original: montoOriginal,
+        monto_total: montoTotalFinal,
+        interes_porcentaje: porcentajeInteres,
+        tipo_pago: formVenta.tipo_pago,
+        numero_cuotas: parseInt(formVenta.numero_cuotas),
+        monto_cuota: montoCuotaCalculado,
+        descripcion: formVenta.descripcion || null,
+        fecha_inicio: formVenta.fecha_inicio,
+        estado: 'activo',
+        numero_factura: numeroFactura, // ⭐ AGREGAR
+        organization_id: organization.id, // ⭐ AGREGAR (CRÍTICO)
+      })
+      .select()
+      .single()
 
-      if (!clienteData) throw new Error('Cliente no encontrado')
+    if (transError) throw transError
 
-      // Obtener datos del producto si es venta
-      let productoNombre = null
-      if (tipoTransaccion === 'venta' && formVenta.producto_id) {
-        const { data: productoData } = await supabase
-          .from('productos')
-          .select('nombre')
-          .eq('id', formVenta.producto_id)
-          .single()
-        
-        productoNombre = productoData?.nombre
-      }
+    // Crear pagos programados
+    if (transData) {
+      const pagosACrear: any[] = []
+      const cuotasParaComprobante: any[] = []
+      const fechaInicio = new Date(formVenta.fecha_inicio)
 
-      // Crear transacción - IMPORTANTE: guardar monto_original e interes_porcentaje
-      const { data: transData, error: transError } = await supabase
-        .from('transacciones')
-        .insert({
-          cliente_id: clienteId,
-          producto_id: tipoTransaccion === 'venta' ? formVenta.producto_id : null,
-          tipo_transaccion: tipoTransaccion,
-          monto_original: montoOriginal, // ✅ Guardar monto original
-          monto_total: montoTotalFinal,
-          interes_porcentaje: porcentajeInteres, // ✅ Guardar porcentaje de interés
-          tipo_pago: formVenta.tipo_pago,
-          numero_cuotas: parseInt(formVenta.numero_cuotas),
-          monto_cuota: montoCuotaCalculado,
-          descripcion: formVenta.descripcion || null,
-          fecha_inicio: formVenta.fecha_inicio,
-          estado: 'activo',
-        })
-        .select()
-        .single()
+      for (let i = 1; i <= parseInt(formVenta.numero_cuotas); i++) {
+        const fechaVencimiento = new Date(fechaInicio)
 
-      if (transError) throw transError
-
-      // Crear pagos programados
-      if (transData) {
-        const pagosACrear: any[] = []
-        const cuotasParaComprobante: any[] = []
-        const fechaInicio = new Date(formVenta.fecha_inicio)
-
-        for (let i = 1; i <= parseInt(formVenta.numero_cuotas); i++) {
-          const fechaVencimiento = new Date(fechaInicio)
-
-          // La primera cuota vence el mismo día, las siguientes según el tipo de pago
-          if (i !== 1) {
-            if (formVenta.tipo_pago === 'semanal') {
-              fechaVencimiento.setDate(fechaVencimiento.getDate() + 7 * (i - 1))
-            } else if (formVenta.tipo_pago === 'quincenal') {
-              fechaVencimiento.setDate(fechaVencimiento.getDate() + 15 * (i - 1))
-            } else if (formVenta.tipo_pago === 'mensual') {
-              // Para pagos mensuales, mantener el mismo día del mes
-              fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1))
-            }
+        // La primera cuota vence el mismo día, las siguientes según el tipo de pago
+        if (i !== 1) {
+          if (formVenta.tipo_pago === 'semanal') {
+            fechaVencimiento.setDate(fechaVencimiento.getDate() + 7 * (i - 1))
+          } else if (formVenta.tipo_pago === 'quincenal') {
+            fechaVencimiento.setDate(fechaVencimiento.getDate() + 15 * (i - 1))
+          } else if (formVenta.tipo_pago === 'mensual') {
+            // Para pagos mensuales, mantener el mismo día del mes
+            fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1))
           }
-
-          const fechaVencimientoStr = fechaVencimiento.toISOString().split('T')[0]
-
-          pagosACrear.push({
-            transaccion_id: transData.id,
-            numero_cuota: i,
-            monto_cuota: montoCuotaCalculado,
-            monto_pagado: 0,
-            fecha_pago: null,
-            fecha_vencimiento: fechaVencimientoStr,
-            estado: 'pendiente',
-          })
-
-          cuotasParaComprobante.push({
-            numero: i,
-            monto: montoCuotaCalculado,
-            fechaVencimiento: fechaVencimientoStr
-          })
         }
 
-        const { error: pagosError } = await supabase.from('pagos').insert(pagosACrear)
-        if (pagosError) throw pagosError
+        const fechaVencimientoStr = fechaVencimiento.toISOString().split('T')[0]
 
-        // Preparar datos para el comprobante
-        setDatosComprobante({
-          tipo: tipoTransaccion,
-          cliente: {
-            nombre: clienteData.nombre,
-            apellido: clienteData.apellido || '',
-            telefono: clienteData.telefono,
-            email: clienteData.email
-          },
-          transaccion: {
-            numeroFactura: transData.numero_factura,
-            fecha: formVenta.fecha_inicio,
-            montoOriginal: montoOriginal,
-            interes: porcentajeInteres,
-            montoTotal: montoTotalFinal,
-            numeroCuotas: parseInt(formVenta.numero_cuotas),
-            montoCuota: montoCuotaCalculado,
-            tipoPago: formVenta.tipo_pago,
-            descripcion: formVenta.descripcion,
-            productoNombre: productoNombre
-          },
-          cuotas: cuotasParaComprobante
+        pagosACrear.push({
+  transaccion_id: transData.id,
+  numero_cuota: i,
+  monto: montoCuotaCalculado, // ⭐ AGREGAR ESTA LÍNEA (campo requerido)
+  monto_cuota: montoCuotaCalculado,
+  monto_pagado: 0,
+  fecha_pago: null,
+  fecha_vencimiento: fechaVencimientoStr,
+  estado: 'pendiente',
+  organization_id: organization.id,
+})
+
+        cuotasParaComprobante.push({
+          numero: i,
+          monto: montoCuotaCalculado,
+          fechaVencimiento: fechaVencimientoStr
         })
-
-        // Mostrar comprobante
-        setMostrarComprobante(true)
       }
-    } catch (error: any) {
-      alert('❌ Error al crear la transacción: ' + error.message)
-      setGuardando(false)
+
+      const { error: pagosError } = await supabase.from('pagos').insert(pagosACrear)
+      if (pagosError) throw pagosError
+
+      // Preparar datos para el comprobante
+      setDatosComprobante({
+        tipo: tipoTransaccion,
+        cliente: {
+          nombre: clienteData.nombre,
+          apellido: clienteData.apellido || '',
+          telefono: clienteData.telefono,
+          email: clienteData.email
+        },
+        transaccion: {
+          numeroFactura: transData.numero_factura,
+          fecha: formVenta.fecha_inicio,
+          montoOriginal: montoOriginal,
+          interes: porcentajeInteres,
+          montoTotal: montoTotalFinal,
+          numeroCuotas: parseInt(formVenta.numero_cuotas),
+          montoCuota: montoCuotaCalculado,
+          tipoPago: formVenta.tipo_pago,
+          descripcion: formVenta.descripcion,
+          productoNombre: productoNombre
+        },
+        cuotas: cuotasParaComprobante
+      })
+
+      // Mostrar comprobante
+      setMostrarComprobante(true)
     }
+  } catch (error: any) {
+    alert('❌ Error al crear la transacción: ' + error.message)
+    setGuardando(false)
   }
+}
 
   const handleCerrarComprobante = () => {
     setMostrarComprobante(false)

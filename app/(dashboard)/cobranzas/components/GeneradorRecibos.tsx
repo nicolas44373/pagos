@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/app/lib/supabase'
+import { useAuth } from '../../../lib/auth.context'
 import { Cliente, Transaccion, Pago } from '@/app/lib/types/cobranzas'
 import {
   FileText,
@@ -38,11 +39,20 @@ export default function GeneradorRecibos({
   transacciones: _t,
   pagos: _p
 }: GeneradorRecibosProps = {}) {
+  const { organization } = useAuth()
   const [busqueda, setBusqueda] = useState('')
   const [clientesEncontrados, setClientesEncontrados] = useState<BusquedaCliente[]>([])
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [deudasCliente, setDeudasCliente] = useState<DeudaCliente[]>([])
   const [loading, setLoading] = useState(false)
+
+  // Estados para configuración del comercio
+  const [datosComercio, setDatosComercio] = useState({
+    nombre_comercio: '',
+    direccion: '',
+    telefono: '',
+    email: ''
+  })
 
   // Estados para registro de pago
   const [modalPagoAbierto, setModalPagoAbierto] = useState(false)
@@ -62,13 +72,42 @@ export default function GeneradorRecibos({
   // Ref para el contenido del recibo
   const reciboRef = useRef<HTMLDivElement>(null)
 
+  // Cargar configuración del comercio
+  useEffect(() => {
+    if (organization) {
+      cargarConfiguracionComercio()
+    }
+  }, [organization])
+
   useEffect(() => {
     if (busqueda.length >= 2) buscarClientes()
     else setClientesEncontrados([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
 
+  const cargarConfiguracionComercio = async () => {
+    if (!organization) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('configuracion')
+        .select('*')
+        .eq('organization_id', organization.id)
+        .eq('clave', 'datos_comercio')
+        .single()
+
+      if (data && data.valor) {
+        const config = JSON.parse(data.valor)
+        setDatosComercio(config)
+      }
+    } catch (error) {
+      console.error('Error cargando configuración del comercio:', error)
+    }
+  }
+
   const buscarClientes = async () => {
+    if (!organization) return
+    
     setLoading(true)
     try {
       const { data: clientes, error } = await supabase
@@ -89,6 +128,7 @@ export default function GeneradorRecibos({
           )
         `
         )
+        .eq('organization_id', organization.id)
         .or(
           `nombre.ilike.%${busqueda}%,apellido.ilike.%${busqueda}%,documento.ilike.%${busqueda}%,telefono.ilike.%${busqueda}%`
         )
@@ -137,6 +177,8 @@ export default function GeneradorRecibos({
   }
 
   const cargarDeudasCliente = async (clienteId: string) => {
+    if (!organization) return
+    
     setLoading(true)
     try {
       const { data: transacciones, error: transError } = await supabase
@@ -144,17 +186,31 @@ export default function GeneradorRecibos({
         .select(
           `
           *,
-          producto:productos(nombre, precio_unitario),
+          productos(
+            id,
+            nombre,
+            precio,
+            descripcion
+          ),
           pagos(*)
         `
         )
         .eq('cliente_id', clienteId)
+        .eq('organization_id', organization.id)
         .in('estado', ['activo', 'moroso'])
         .order('fecha_inicio', { ascending: false })
 
       if (transError) throw transError
 
       const deudas: DeudaCliente[] = (transacciones || []).map((trans) => {
+        const transMapeada = {
+          ...trans,
+          producto: trans.productos ? {
+            nombre: trans.productos.nombre,
+            precio_unitario: trans.productos.precio
+          } : null
+        }
+        
         const pagos = (((trans as any).pagos || []) as Pago[]).sort((a, b) => {
           return (a.numero_cuota || 0) - (b.numero_cuota || 0)
         })
@@ -172,7 +228,7 @@ export default function GeneradorRecibos({
         })
 
         return {
-          transaccion: trans,
+          transaccion: transMapeada,
           pagos,
           saldoPendiente,
           cuotasPendientes,
@@ -202,7 +258,7 @@ export default function GeneradorRecibos({
   }
 
   const registrarPago = async () => {
-    if (!pagoSeleccionado || !transaccionPago || !clienteSeleccionado) return
+    if (!pagoSeleccionado || !transaccionPago || !clienteSeleccionado || !organization) return
 
     setLoading(true)
     try {
@@ -279,25 +335,65 @@ export default function GeneradorRecibos({
   }
 
   const formatearFecha = (fecha: string) => {
-    const [year, month, day] = fecha.split('-').map(Number)
+  try {
+    if (!fecha) return ''
+    
+    // Extraer solo la parte de la fecha si viene con timestamp
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    // Validar que los valores sean números válidos
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return fecha
+    }
+    
     const fechaObj = new Date(year, month - 1, day)
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
     return fechaObj.toLocaleDateString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
     })
+  } catch {
+    return fecha
   }
+}
 
-  const formatearFechaCompleta = (fecha: string) => {
-    const [year, month, day] = fecha.split('-').map(Number)
+const formatearFechaCompleta = (fecha: string) => {
+  try {
+    if (!fecha) return ''
+    
+    // Extraer solo la parte de la fecha si viene con timestamp
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    // Validar que los valores sean números válidos
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return fecha
+    }
+    
     const fechaObj = new Date(year, month - 1, day)
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
     return fechaObj.toLocaleDateString('es-AR', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     })
+  } catch {
+    return fecha
   }
+}
 
   const calcularDiasVencimiento = (fechaVencimiento: string) => {
     const hoy = new Date()
@@ -309,10 +405,6 @@ export default function GeneradorRecibos({
 
     return Math.floor((vencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
   }
-
-  // =========================
-  // ✅ DESCARGA DIRECTA (SIN IMPRESIÓN)
-  // =========================
 
   const isIOS = () => {
     if (typeof navigator === 'undefined') return false
@@ -333,7 +425,6 @@ export default function GeneradorRecibos({
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
 
-      // Espera 1 frame para asegurar layout final (útil si abriste modal recién)
       await waitNextFrame()
 
       const canvas = await html2canvas(reciboRef.current, {
@@ -376,14 +467,12 @@ export default function GeneradorRecibos({
       const pdfBlob = pdf.output('blob')
       const blobUrl = URL.createObjectURL(pdfBlob)
 
-      // iOS Safari no respeta download de forma silenciosa
       if (isIOS()) {
         window.open(blobUrl, '_blank', 'noopener,noreferrer')
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
         return
       }
 
-      // ✅ Descarga directa (sin print / sin preview)
       const link = document.createElement('a')
       link.href = blobUrl
       link.download = fileName
@@ -405,9 +494,7 @@ export default function GeneradorRecibos({
     }
   }
 
-  // Para cuando abrís el modal y querés descargar “al toque”
   const descargarPDFTrasRender = async () => {
-    // espera 2 frames para que el modal y fuentes terminen de asentarse
     await waitNextFrame()
     await waitNextFrame()
     await descargarPDF()
@@ -755,7 +842,6 @@ export default function GeneradorRecibos({
                                           setReciboGenerado(datosRecibo)
                                           setMostrarRecibo(true)
 
-                                          // ✅ descarga cuando ya se renderizó el recibo
                                           setTimeout(() => {
                                             void descargarPDFTrasRender()
                                           }, 0)
@@ -979,12 +1065,18 @@ export default function GeneradorRecibos({
 
                 <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 rounded">
                   <h3 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">Datos del Comercio:</h3>
-                  <div className="text-xs sm:text-sm text-gray-700 space-y-0.5">
-                    <div>ELECTRO HOGAR</div>
-                    <div>Las talitas - Tucumán, Parque Logistico 1300 - Ruta 9</div>
-                    <div>Teléfono: (381) 446-1795</div>
-                    <div className="break-all">Gmail: lopezrodrigoalejandro2025@gmail.com</div>
-                  </div>
+                  {datosComercio.nombre_comercio ? (
+                    <div className="text-xs sm:text-sm text-gray-700 space-y-0.5">
+                      <div>{datosComercio.nombre_comercio}</div>
+                      <div>{datosComercio.direccion}</div>
+                      <div>Teléfono: {datosComercio.telefono}</div>
+                      <div className="break-all">Email: {datosComercio.email}</div>
+                    </div>
+                  ) : (
+                    <div className="text-xs sm:text-sm text-gray-500 italic">
+                      No hay datos configurados. Ve a Configuración para agregar los datos del comercio.
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">

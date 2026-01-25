@@ -53,33 +53,65 @@ export default function HistorialTransacciones({
   }
 
   const formatearFecha = (fecha: string) => {
-    try {
-      const [year, month, day] = fecha.split('-').map(Number)
-      const fechaObj = new Date(year, month - 1, day)
-      return fechaObj.toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      })
-    } catch {
+  try {
+    if (!fecha) return ''
+    
+    // Extraer solo la parte de la fecha si viene con timestamp
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    // Validar que los valores sean números válidos
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
       return fecha
     }
+    
+    const fechaObj = new Date(year, month - 1, day)
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
+    return fechaObj.toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  } catch {
+    return fecha
   }
+}
 
-  // (No se usa hoy, pero lo dejo por si lo necesitas después)
-  const formatearFechaLarga = (fecha: string) => {
-    try {
-      const [year, month, day] = fecha.split('-').map(Number)
-      const fechaObj = new Date(year, month - 1, day)
-      return fechaObj.toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      })
-    } catch {
+const formatearFechaCompleta = (fecha: string) => {
+  try {
+    if (!fecha) return ''
+    
+    // Extraer solo la parte de la fecha si viene con timestamp
+    const fechaSoloFecha = fecha.split('T')[0]
+    const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+    
+    // Validar que los valores sean números válidos
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
       return fecha
     }
+    
+    const fechaObj = new Date(year, month - 1, day)
+    
+    // Verificar que la fecha sea válida
+    if (isNaN(fechaObj.getTime())) {
+      return fecha
+    }
+    
+    return fechaObj.toLocaleDateString('es-AR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  } catch {
+    return fecha
   }
+}
 
   const handleEliminar = async (transaccionId: string) => {
     if (!onEliminarTransaccion) return

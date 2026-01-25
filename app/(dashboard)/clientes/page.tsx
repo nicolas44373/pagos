@@ -2,71 +2,76 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/app/lib/supabase'
 import { 
-  Package, 
+  Search, 
   Plus, 
   Edit2, 
   Trash2, 
   Save, 
   X, 
-  DollarSign, 
+  User, 
+  Phone, 
+  Mail, 
+  MapPin, 
   FileText,
   AlertTriangle,
   Check,
-  Search,
-  Tag,
-  Box,
-  TrendingUp,
-  Zap
+  Users,
+  Calendar,
+  Filter
 } from 'lucide-react'
-
-interface Producto {
+import { useAuth } from '../../lib/auth.context'
+interface Cliente {
   id: string
   nombre: string
-  descripcion: string
-  precio: number
-  tipo: string
-  stock: number
+  apellido: string
+  documento: string
+  telefono: string
+  direccion: string
+  email: string
   created_at?: string
 }
 
-export default function ProductosPage() {
-  const [productos, setProductos] = useState<Producto[]>([])
-  const [productosFiltrados, setProductosFiltrados] = useState<Producto[]>([])
+export default function ClientesPage() {
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clientesFiltrados, setClientesFiltrados] = useState<Cliente[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [modoEdicion, setModoEdicion] = useState(false)
-  const [productoEditando, setProductoEditando] = useState<string | null>(null)
+  const [clienteEditando, setClienteEditando] = useState<string | null>(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [loading, setLoading] = useState(false)
   
   const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false)
-  const [productoAEliminar, setProductoAEliminar] = useState<Producto | null>(null)
+  const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null)
   
   const [mensaje, setMensaje] = useState<{tipo: 'exito' | 'error', texto: string} | null>(null)
   
   const [formData, setFormData] = useState({
     nombre: '',
-    descripcion: '',
-    precio: '',
-    tipo: 'electrodomestico',
-    stock: ''
+    apellido: '',
+    documento: '',
+    telefono: '',
+    direccion: '',
+    email: ''
   })
-
+    const { organization } = useAuth()
   useEffect(() => {
-    cargarProductos()
+    cargarClientes()
   }, [])
 
   useEffect(() => {
     if (busqueda) {
-      const filtrados = productos.filter(producto => 
-        producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        producto.descripcion.toLowerCase().includes(busqueda.toLowerCase()) ||
-        producto.tipo.toLowerCase().includes(busqueda.toLowerCase())
+      const filtrados = clientes.filter(cliente => 
+        cliente.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+        cliente.apellido.toLowerCase().includes(busqueda.toLowerCase()) ||
+        cliente.documento.includes(busqueda) ||
+        cliente.telefono.includes(busqueda) ||
+        cliente.email.toLowerCase().includes(busqueda.toLowerCase())
       )
-      setProductosFiltrados(filtrados)
+      setClientesFiltrados(filtrados)
     } else {
-      setProductosFiltrados(productos)
+      setClientesFiltrados(clientes)
     }
-  }, [busqueda, productos])
+  }, [busqueda, clientes])
 
   useEffect(() => {
     if (mensaje) {
@@ -75,27 +80,27 @@ export default function ProductosPage() {
     }
   }, [mensaje])
 
-  const cargarProductos = async () => {
+  const cargarClientes = async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('productos')
+        .from('clientes')
         .select('*')
         .order('created_at', { ascending: false })
       
       if (error) throw error
       if (data) {
-        setProductos(data)
-        setProductosFiltrados(data)
+        setClientes(data)
+        setClientesFiltrados(data)
       }
     } catch (error: any) {
-      setMensaje({ tipo: 'error', texto: 'Error al cargar productos: ' + error.message })
+      setMensaje({ tipo: 'error', texto: 'Error al cargar clientes: ' + error.message })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({
       ...prev,
@@ -106,13 +111,14 @@ export default function ProductosPage() {
   const limpiarFormulario = () => {
     setFormData({
       nombre: '',
-      descripcion: '',
-      precio: '',
-      tipo: 'electrodomestico',
-      stock: ''
+      apellido: '',
+      documento: '',
+      telefono: '',
+      direccion: '',
+      email: ''
     })
     setModoEdicion(false)
-    setProductoEditando(null)
+    setClienteEditando(null)
     setMostrarFormulario(false)
   }
 
@@ -121,128 +127,136 @@ export default function ProductosPage() {
       setMensaje({ tipo: 'error', texto: 'El nombre es obligatorio' })
       return false
     }
-    if (!formData.precio || parseFloat(formData.precio) <= 0) {
-      setMensaje({ tipo: 'error', texto: 'El precio debe ser mayor a 0' })
+    if (!formData.apellido.trim()) {
+      setMensaje({ tipo: 'error', texto: 'El apellido es obligatorio' })
+      return false
+    }
+    if (!formData.documento.trim()) {
+      setMensaje({ tipo: 'error', texto: 'El documento es obligatorio' })
+      return false
+    }
+    if (formData.email && !formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      setMensaje({ tipo: 'error', texto: 'El email no es válido' })
       return false
     }
     return true
   }
 
-  const guardarProducto = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validarFormulario()) return
-    
-    setLoading(true)
-    try {
-      const dataToSave = {
-        nombre: formData.nombre,
-        descripcion: formData.descripcion,
-        precio: parseFloat(formData.precio),
-        tipo: formData.tipo,
-        stock: parseInt(formData.stock) || 0
-      }
-
-      if (modoEdicion && productoEditando) {
-        const { error } = await supabase
-          .from('productos')
-          .update(dataToSave)
-          .eq('id', productoEditando)
-        
-        if (error) throw error
-        setMensaje({ tipo: 'exito', texto: 'Producto actualizado correctamente' })
-      } else {
-        const { error } = await supabase
-          .from('productos')
-          .insert(dataToSave)
-        
-        if (error) throw error
-        setMensaje({ tipo: 'exito', texto: 'Producto creado correctamente' })
-      }
-      
-      limpiarFormulario()
-      cargarProductos()
-    } catch (error: any) {
-      setMensaje({ tipo: 'error', texto: 'Error al guardar: ' + error.message })
-    } finally {
-      setLoading(false)
-    }
+  const guardarCliente = async (e: React.FormEvent) => {
+  e.preventDefault()
+  
+  if (!validarFormulario()) return
+  
+  // ⭐ VALIDAR QUE EXISTA LA ORGANIZACIÓN
+  if (!organization) {
+    setMensaje({ tipo: 'error', texto: 'No se encontró la organización' })
+    return
   }
+  
+  setLoading(true)
+  try {
+    // ⭐ CREAR dataToSave CON ORGANIZATION_ID
+    const dataToSave = {
+      ...formData,
+      organization_id: organization.id
+    }
+    
+    if (modoEdicion && clienteEditando) {
+      const { error } = await supabase
+        .from('clientes')
+        .update(dataToSave)
+        .eq('id', clienteEditando)
+      
+      if (error) throw error
+      setMensaje({ tipo: 'exito', texto: 'Cliente actualizado correctamente' })
+    } else {
+      const { error } = await supabase
+        .from('clientes')
+        .insert(dataToSave)
+      
+      if (error) throw error
+      setMensaje({ tipo: 'exito', texto: 'Cliente creado correctamente' })
+    }
+    
+    limpiarFormulario()
+    cargarClientes()
+  } catch (error: any) {
+    if (error.message.includes('duplicate')) {
+      setMensaje({ tipo: 'error', texto: 'Ya existe un cliente con ese documento' })
+    } else {
+      setMensaje({ tipo: 'error', texto: 'Error al guardar: ' + error.message })
+    }
+  } finally {
+    setLoading(false)
+  }
+}
 
-  const iniciarEdicion = (producto: Producto) => {
+  const iniciarEdicion = (cliente: Cliente) => {
     setFormData({
-      nombre: producto.nombre,
-      descripcion: producto.descripcion || '',
-      precio: producto.precio.toString(),
-      tipo: producto.tipo,
-      stock: producto.stock?.toString() || '0'
+      nombre: cliente.nombre,
+      apellido: cliente.apellido,
+      documento: cliente.documento,
+      telefono: cliente.telefono || '',
+      direccion: cliente.direccion || '',
+      email: cliente.email || ''
     })
     setModoEdicion(true)
-    setProductoEditando(producto.id)
+    setClienteEditando(cliente.id)
     setMostrarFormulario(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const confirmarEliminar = (producto: Producto) => {
-    setProductoAEliminar(producto)
+  const confirmarEliminar = (cliente: Cliente) => {
+    setClienteAEliminar(cliente)
     setMostrarModalEliminar(true)
   }
 
-  const eliminarProducto = async () => {
-    if (!productoAEliminar) return
+  const eliminarCliente = async () => {
+    if (!clienteAEliminar) return
     
     setLoading(true)
     try {
+      const { data: transacciones } = await supabase
+        .from('transacciones')
+        .select('id')
+        .eq('cliente_id', clienteAEliminar.id)
+        .limit(1)
+      
+      if (transacciones && transacciones.length > 0) {
+        setMensaje({ 
+          tipo: 'error', 
+          texto: 'No se puede eliminar el cliente porque tiene transacciones asociadas' 
+        })
+        setMostrarModalEliminar(false)
+        return
+      }
+      
       const { error } = await supabase
-        .from('productos')
+        .from('clientes')
         .delete()
-        .eq('id', productoAEliminar.id)
+        .eq('id', clienteAEliminar.id)
       
       if (error) throw error
       
-      setMensaje({ tipo: 'exito', texto: 'Producto eliminado correctamente' })
-      cargarProductos()
+      setMensaje({ tipo: 'exito', texto: 'Cliente eliminado correctamente' })
+      cargarClientes()
     } catch (error: any) {
       setMensaje({ tipo: 'error', texto: 'Error al eliminar: ' + error.message })
     } finally {
       setLoading(false)
       setMostrarModalEliminar(false)
-      setProductoAEliminar(null)
+      setClienteAEliminar(null)
     }
   }
 
-  const formatearMoneda = (monto: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0
-    }).format(monto)
+  const formatearFecha = (fecha?: string) => {
+    if (!fecha) return ''
+    return new Date(fecha).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
   }
-
-  const getTipoColor = (tipo: string) => {
-    switch (tipo) {
-      case 'electrodomestico':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-      case 'prestamo':
-        return 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-      default:
-        return 'bg-slate-500/20 text-slate-300 border-slate-500/30'
-    }
-  }
-
-  const getTipoLabel = (tipo: string) => {
-    switch (tipo) {
-      case 'electrodomestico':
-        return 'Electrodoméstico'
-      case 'prestamo':
-        return 'Préstamo'
-      default:
-        return tipo
-    }
-  }
-
-  const totalValorInventario = productosFiltrados.reduce((sum, p) => sum + (p.precio * (p.stock || 0)), 0)
-  const totalProductos = productosFiltrados.reduce((sum, p) => sum + (p.stock || 0), 0)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 relative overflow-hidden">
@@ -255,26 +269,26 @@ export default function ProductosPage() {
 
       {/* Floating shapes */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-20 left-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-20 left-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
-        <div className="absolute top-1/2 right-1/3 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse animation-delay-4000"></div>
+        <div className="absolute top-1/2 right-1/3 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl animate-pulse animation-delay-4000"></div>
       </div>
 
       <div className="relative max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         {/* Header */}
         <div className="backdrop-blur-xl bg-slate-800/40 rounded-xl border border-slate-700/50 shadow-2xl p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl blur opacity-50"></div>
-                <div className="relative bg-gradient-to-br from-emerald-600 to-blue-600 p-4 rounded-xl">
-                  <Package className="w-8 h-8 text-white" />
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl blur opacity-50"></div>
+                <div className="relative bg-gradient-to-br from-blue-600 to-purple-600 p-4 rounded-xl">
+                  <Users className="w-8 h-8 text-white" />
                 </div>
               </div>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-white">Gestión de Productos</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white">Gestión de Clientes</h1>
                 <p className="text-slate-300 mt-1">
-                  {productosFiltrados.length} producto{productosFiltrados.length !== 1 ? 's' : ''} • {totalProductos} unidades
+                  Total: {clientesFiltrados.length} cliente{clientesFiltrados.length !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
@@ -289,48 +303,9 @@ export default function ProductosPage() {
               <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative flex items-center gap-2">
                 <Plus className="w-5 h-5" />
-                Nuevo Producto
+                Nuevo Cliente
               </div>
             </button>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-4 border border-slate-600/50">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <Package className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Total Productos</p>
-                  <p className="text-xl font-bold text-white">{productosFiltrados.length}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-4 border border-slate-600/50">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/20 rounded-lg">
-                  <Box className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Stock Total</p>
-                  <p className="text-xl font-bold text-white">{totalProductos}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-slate-700/30 backdrop-blur-sm rounded-lg p-4 border border-slate-600/50">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-500/20 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Valor Inventario</p>
-                  <p className="text-xl font-bold text-white">{formatearMoneda(totalValorInventario)}</p>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Barra de búsqueda */}
@@ -339,10 +314,10 @@ export default function ProductosPage() {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Buscar por nombre, descripción o tipo..."
+                placeholder="Buscar por nombre, documento, teléfono o email..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent backdrop-blur-sm"
+                className="w-full pl-12 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm"
               />
             </div>
           </div>
@@ -369,8 +344,8 @@ export default function ProductosPage() {
           <div className="backdrop-blur-xl bg-slate-800/40 rounded-xl border border-slate-700/50 shadow-2xl p-6 mb-6 animate-fade-in">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Package className="w-6 h-6 text-emerald-400" />
-                {modoEdicion ? 'Editar Producto' : 'Nuevo Producto'}
+                <User className="w-6 h-6 text-blue-400" />
+                {modoEdicion ? 'Editar Cliente' : 'Nuevo Cliente'}
               </h2>
               <button
                 onClick={limpiarFormulario}
@@ -380,20 +355,20 @@ export default function ProductosPage() {
               </button>
             </div>
             
-            <form onSubmit={guardarProducto} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={guardarCliente} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Nombre del Producto *
+                  Nombre *
                 </label>
                 <div className="relative">
-                  <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                   <input
                     type="text"
                     name="nombre"
-                    placeholder="Ej: Heladera Samsung 350L"
+                    placeholder="Ingrese el nombre"
                     value={formData.nombre}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
@@ -401,19 +376,17 @@ export default function ProductosPage() {
               
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Precio Unitario *
+                  Apellido *
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                   <input
-                    type="number"
-                    name="precio"
-                    placeholder="0.00"
-                    value={formData.precio}
+                    type="text"
+                    name="apellido"
+                    placeholder="Ingrese el apellido"
+                    value={formData.apellido}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    step="0.01"
-                    min="0"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
@@ -421,50 +394,75 @@ export default function ProductosPage() {
               
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Tipo de Producto *
+                  Documento *
                 </label>
-                <select
-                  name="tipo"
-                  value={formData.tipo}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="electrodomestico">Electrodoméstico</option>
-                  <option value="prestamo">Préstamo</option>
-                </select>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    name="documento"
+                    placeholder="DNI / CUIT / ID"
+                    value={formData.documento}
+                    onChange={handleInputChange}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    required
+                    disabled={modoEdicion}
+                  />
+                </div>
+                {modoEdicion && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    El documento no se puede modificar
+                  </p>
+                )}
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Stock Disponible
+                  Teléfono
                 </label>
                 <div className="relative">
-                  <Box className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                   <input
-                    type="number"
-                    name="stock"
-                    placeholder="0"
-                    value={formData.stock}
+                    type="tel"
+                    name="telefono"
+                    placeholder="Ej: 11-1234-5678"
+                    value={formData.telefono}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    min="0"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
               
-              <div className="md:col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Descripción
+                  Email
                 </label>
                 <div className="relative">
-                  <FileText className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="correo@ejemplo.com"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Dirección
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                   <textarea
-                    name="descripcion"
-                    placeholder="Descripción detallada del producto..."
-                    value={formData.descripcion}
+                    name="direccion"
+                    placeholder="Calle, número, ciudad..."
+                    value={formData.direccion}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                    rows={3}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows={2}
                   />
                 </div>
               </div>
@@ -499,39 +497,42 @@ export default function ProductosPage() {
           </div>
         )}
 
-        {/* Tabla de productos */}
+        {/* Tabla de clientes */}
         <div className="backdrop-blur-xl bg-slate-800/40 rounded-xl border border-slate-700/50 shadow-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-700/50 bg-slate-800/60">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Package className="w-5 h-5 text-emerald-400" />
-              Catálogo de Productos
+              <Users className="w-5 h-5 text-blue-400" />
+              Lista de Clientes
             </h2>
           </div>
           
-          {loading && productosFiltrados.length === 0 ? (
+          {loading && clientesFiltrados.length === 0 ? (
             <div className="p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-600 border-t-emerald-500 mb-4"></div>
-              <p className="text-slate-300 font-medium">Cargando productos...</p>
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-600 border-t-blue-500 mb-4"></div>
+              <p className="text-slate-300 font-medium">Cargando clientes...</p>
             </div>
-          ) : productosFiltrados.length > 0 ? (
+          ) : clientesFiltrados.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-800/60 border-b border-slate-700/50">
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Producto
+                      Documento
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Nombre Completo
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider hidden sm:table-cell">
+                      Teléfono
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider hidden md:table-cell">
-                      Descripción
+                      Email
                     </th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Precio
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider hidden lg:table-cell">
+                      Dirección
                     </th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Tipo
-                    </th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider hidden sm:table-cell">
-                      Stock
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider hidden xl:table-cell">
+                      Registrado
                     </th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
                       Acciones
@@ -539,53 +540,72 @@ export default function ProductosPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50">
-                  {productosFiltrados.map((producto) => (
-                    <tr key={producto.id} className="hover:bg-slate-700/30 transition-colors">
+                  {clientesFiltrados.map((cliente) => (
+                    <tr key={cliente.id} className="hover:bg-slate-700/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-white">{producto.nombre}</div>
-                        <div className="text-sm text-slate-400 md:hidden mt-1">
-                          {producto.descripcion}
+                        <span className="font-mono text-sm bg-slate-700/50 text-blue-300 px-3 py-1 rounded-lg">
+                          {cliente.documento}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <div className="font-semibold text-white">
+                            {cliente.nombre} {cliente.apellido}
+                          </div>
+                          <div className="text-sm text-slate-400 sm:hidden">
+                            {cliente.telefono}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        {producto.descripcion ? (
-                          <div className="text-sm text-slate-300 max-w-xs truncate" title={producto.descripcion}>
-                            {producto.descripcion}
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {cliente.telefono ? (
+                          <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            {cliente.telefono}
                           </div>
                         ) : (
                           <span className="text-slate-500 text-sm">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="font-bold text-emerald-400">
-                          {formatearMoneda(producto.precio)}
-                        </div>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        {cliente.email ? (
+                          <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <Mail className="w-3 h-3 text-slate-400" />
+                            <span className="truncate max-w-xs">{cliente.email}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-sm">-</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-center">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getTipoColor(producto.tipo)}`}>
-                            {getTipoLabel(producto.tipo)}
-                          </span>
-                        </div>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {cliente.direccion ? (
+                          <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            <span className="truncate max-w-xs" title={cliente.direccion}>
+                              {cliente.direccion}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-sm">-</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-center hidden sm:table-cell">
-                        <span className={`font-semibold ${
-                          (producto.stock || 0) > 0 ? 'text-emerald-400' : 'text-red-400'
-                        }`}>
-                          {producto.stock || 0}
-                        </span>
+                      <td className="px-4 py-3 text-sm text-slate-400 hidden xl:table-cell">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-3 h-3" />
+                          {formatearFecha(cliente.created_at)}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
                           <button
-                            onClick={() => iniciarEdicion(producto)}
+                            onClick={() => iniciarEdicion(cliente)}
                             className="p-2 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors"
                             title="Editar"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => confirmarEliminar(producto)}
+                            onClick={() => confirmarEliminar(cliente)}
                             className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
                             title="Eliminar"
                           >
@@ -600,14 +620,14 @@ export default function ProductosPage() {
             </div>
           ) : (
             <div className="p-12 text-center">
-              <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+              <Users className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-white mb-2">
-                {busqueda ? 'No se encontraron productos' : 'No hay productos registrados'}
+                {busqueda ? 'No se encontraron clientes' : 'No hay clientes registrados'}
               </h3>
               <p className="text-slate-400">
                 {busqueda 
                   ? 'Intenta con otros términos de búsqueda'
-                  : 'Comienza agregando tu primer producto'
+                  : 'Comienza agregando tu primer cliente'
                 }
               </p>
             </div>
@@ -616,7 +636,7 @@ export default function ProductosPage() {
       </div>
 
       {/* Modal de confirmación de eliminación */}
-      {mostrarModalEliminar && productoAEliminar && (
+      {mostrarModalEliminar && clienteAEliminar && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="backdrop-blur-xl bg-slate-800/95 border border-slate-700/50 rounded-xl max-w-md w-full p-6 shadow-2xl animate-fade-in">
             <div className="flex items-start gap-4 mb-6">
@@ -628,8 +648,8 @@ export default function ProductosPage() {
                   Confirmar eliminación
                 </h3>
                 <p className="text-slate-300 mb-4">
-                  ¿Estás seguro de que deseas eliminar el producto <strong className="text-white">
-                    {productoAEliminar.nombre}
+                  ¿Estás seguro de que deseas eliminar al cliente <strong className="text-white">
+                    {clienteAEliminar.nombre} {clienteAEliminar.apellido}
                   </strong>?
                 </p>
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4">
@@ -638,9 +658,13 @@ export default function ProductosPage() {
                   </p>
                 </div>
                 <div className="bg-slate-700/50 rounded-lg p-3 space-y-1 text-sm text-slate-300">
-                  <p><strong>Precio:</strong> {formatearMoneda(productoAEliminar.precio)}</p>
-                  <p><strong>Tipo:</strong> {getTipoLabel(productoAEliminar.tipo)}</p>
-                  <p><strong>Stock:</strong> {productoAEliminar.stock || 0} unidades</p>
+                  <p><strong>Documento:</strong> {clienteAEliminar.documento}</p>
+                  {clienteAEliminar.telefono && (
+                    <p><strong>Teléfono:</strong> {clienteAEliminar.telefono}</p>
+                  )}
+                  {clienteAEliminar.email && (
+                    <p><strong>Email:</strong> {clienteAEliminar.email}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -649,7 +673,7 @@ export default function ProductosPage() {
               <button
                 onClick={() => {
                   setMostrarModalEliminar(false)
-                  setProductoAEliminar(null)
+                  setClienteAEliminar(null)
                 }}
                 className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700/50 transition-colors"
                 disabled={loading}
@@ -657,7 +681,7 @@ export default function ProductosPage() {
                 Cancelar
               </button>
               <button
-                onClick={eliminarProducto}
+                onClick={eliminarCliente}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 disabled={loading}
               >
@@ -669,7 +693,7 @@ export default function ProductosPage() {
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    Eliminar Producto
+                    Eliminar Cliente
                   </>
                 )}
               </button>

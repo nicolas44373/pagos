@@ -7,6 +7,60 @@ interface ResumenPagosProps {
 }
 
 export default function ResumenPagos({ transaccion, pagos }: ResumenPagosProps) {
+  // Función de formateo de fecha seguro
+  const formatearFecha = (fecha: string) => {
+    try {
+      if (!fecha) return ''
+      
+      const fechaSoloFecha = fecha.split('T')[0]
+      const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+      
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return fecha
+      }
+      
+      const fechaObj = new Date(year, month - 1, day)
+      
+      if (isNaN(fechaObj.getTime())) {
+        return fecha
+      }
+      
+      return fechaObj.toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
+    } catch {
+      return fecha
+    }
+  }
+
+  // Función para calcular diferencia en días
+  const calcularDiferenciaDias = (fechaVencimiento: string) => {
+    try {
+      const hoy = new Date()
+      hoy.setHours(0, 0, 0, 0)
+      
+      const fechaSoloFecha = fechaVencimiento.split('T')[0]
+      const [year, month, day] = fechaSoloFecha.split('-').map(Number)
+      
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return 0
+      }
+      
+      const vencimiento = new Date(year, month - 1, day)
+      vencimiento.setHours(0, 0, 0, 0)
+      
+      if (isNaN(vencimiento.getTime())) {
+        return 0
+      }
+      
+      return Math.floor((hoy.getTime() - vencimiento.getTime()) / (1000 * 60 * 60 * 24))
+    } catch {
+      return 0
+    }
+  }
+
   const totalPagado = pagos.reduce((sum, p) => sum + p.monto_pagado, 0)
   const totalPendiente = transaccion.monto_total - totalPagado
   const cuotasPagadas = pagos.filter(p => p.estado === 'pagado').length
@@ -15,13 +69,17 @@ export default function ResumenPagos({ transaccion, pagos }: ResumenPagosProps) 
   // Calcular próximo vencimiento
   const proximoPago = pagos
     .filter(p => p.estado !== 'pagado')
-    .sort((a, b) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime())[0]
+    .sort((a, b) => {
+      const fechaA = a.fecha_vencimiento.split('T')[0]
+      const fechaB = b.fecha_vencimiento.split('T')[0]
+      return fechaA.localeCompare(fechaB)
+    })[0]
   
   // Calcular pagos vencidos
   const pagosVencidos = pagos.filter(p => {
-    const hoy = new Date()
-    const vencimiento = new Date(p.fecha_vencimiento)
-    return p.estado !== 'pagado' && vencimiento < hoy
+    if (p.estado === 'pagado') return false
+    const diasDiferencia = calcularDiferenciaDias(p.fecha_vencimiento)
+    return diasDiferencia > 0 // Positivo significa que ya pasó la fecha
   })
   
   return (
@@ -101,7 +159,7 @@ export default function ResumenPagos({ transaccion, pagos }: ResumenPagosProps) 
                 <div className="flex justify-between items-center">
                   <p className="text-xs text-gray-500">Fecha</p>
                   <p className="font-semibold text-gray-700 text-sm">
-                    {new Date(proximoPago.fecha_vencimiento).toLocaleDateString('es-AR')}
+                    {formatearFecha(proximoPago.fecha_vencimiento)}
                   </p>
                 </div>
                 <div className="flex justify-between items-center mt-1">
@@ -134,11 +192,14 @@ export default function ResumenPagos({ transaccion, pagos }: ResumenPagosProps) 
               <span>✅</span>
               <span>Transacción completada exitosamente</span>
             </p>
-            <p className="text-green-700 text-xs mt-1">
-              Finalizada el {pagos.find(p => p.numero_cuota === transaccion.numero_cuotas)?.fecha_pago 
-                ? new Date(pagos.find(p => p.numero_cuota === transaccion.numero_cuotas)!.fecha_pago!).toLocaleDateString('es-AR')
-                : 'N/A'}
-            </p>
+            {(() => {
+              const ultimoPago = pagos.find(p => p.numero_cuota === transaccion.numero_cuotas)
+              return ultimoPago?.fecha_pago ? (
+                <p className="text-green-700 text-xs mt-1">
+                  Finalizada el {formatearFecha(ultimoPago.fecha_pago)}
+                </p>
+              ) : null
+            })()}
           </div>
         )}
         
@@ -149,9 +210,7 @@ export default function ResumenPagos({ transaccion, pagos }: ResumenPagosProps) 
               <span>Atención: Esta cuenta tiene {pagosVencidos.length} {pagosVencidos.length === 1 ? 'pago vencido' : 'pagos vencidos'}</span>
             </p>
             <p className="text-red-700 text-xs mt-1">
-              El pago más antiguo venció hace {
-                Math.floor((new Date().getTime() - new Date(pagosVencidos[0].fecha_vencimiento).getTime()) / (1000 * 60 * 60 * 24))
-              } días
+              El pago más antiguo venció hace {calcularDiferenciaDias(pagosVencidos[0].fecha_vencimiento)} días
             </p>
           </div>
         )}

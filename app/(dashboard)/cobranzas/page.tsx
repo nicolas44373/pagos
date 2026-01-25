@@ -21,8 +21,9 @@ import {
   FileText,
   AlertTriangle
 } from 'lucide-react'
-
+import { useAuth } from '../../lib/auth.context'
 export default function CobranzasPage() {
+   const { organization } = useAuth()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('')
   const [transacciones, setTransacciones] = useState<Transaccion[]>([])
@@ -68,40 +69,95 @@ export default function CobranzasPage() {
   }
 
   const cargarClientes = async () => {
-    const { data } = await supabase.from('clientes').select('*').order('nombre')
-    if (data) setClientes(data)
-  }
+  if (!organization) return // ⭐ AGREGAR
+  
+  const { data } = await supabase
+    .from('clientes')
+    .select('*')
+    .eq('organization_id', organization.id) // ⭐ AGREGAR
+    .order('nombre')
+  
+  if (data) setClientes(data)
+}
 
-  const cargarProductos = async () => {
-    const { data } = await supabase.from('productos').select('*').order('nombre')
-    if (data) setProductos(data)
-  }
+const cargarProductos = async () => {
+  if (!organization) return // ⭐ AGREGAR
+  
+  const { data } = await supabase
+    .from('productos')
+    .select('*')
+    .eq('organization_id', organization.id) // ⭐ AGREGAR
+    .order('nombre')
+  
+  if (data) setProductos(data)
+}
+
+  
 
   const cargarHistorial = async (clienteId: string) => {
-    setLoading(true)
-    try {
-      const { data: transData } = await supabase
-        .from('transacciones')
-        .select(`*, producto:productos(nombre, precio_unitario)`)
-        .eq('cliente_id', clienteId)
-        .order('created_at', { ascending: false })
-      if (transData) {
-        setTransacciones(transData)
-        const pagosPorTransaccion: { [key: string]: Pago[] } = {}
-        for (const trans of transData) {
-          const { data: pagosData } = await supabase
-            .from('pagos')
-            .select('*')
-            .eq('transaccion_id', trans.id)
-            .order('numero_cuota')
-          if (pagosData) pagosPorTransaccion[trans.id] = pagosData
-        }
-        setPagos(pagosPorTransaccion)
-      }
-    } finally {
-      setLoading(false)
+  setLoading(true)
+  try {
+    // ⭐ CORRECCIÓN: Query mejorado con JOIN correcto
+    const { data: transData, error: transError } = await supabase
+      .from('transacciones')
+      .select(`
+        *,
+        productos (
+          id,
+          nombre,
+          descripcion,
+          precio,
+          tipo
+        )
+      `)
+      .eq('cliente_id', clienteId)
+      .order('fecha_inicio', { ascending: false })
+    
+    if (transError) {
+      console.error('Error cargando transacciones:', transError)
+      throw transError
     }
+    
+    if (transData) {
+      // ⭐ Mapear para compatibilidad con código existente
+      const transaccionesMapeadas = transData.map(trans => ({
+        ...trans,
+        producto: trans.productos ? {
+          nombre: trans.productos.nombre,
+          precio_unitario: trans.productos.precio // Mapear precio a precio_unitario
+        } : null
+      }))
+      
+      setTransacciones(transaccionesMapeadas)
+      
+      // Cargar pagos para cada transacción
+      const pagosPorTransaccion: { [key: string]: Pago[] } = {}
+      
+      for (const trans of transData) {
+        const { data: pagosData, error: pagosError } = await supabase
+          .from('pagos')
+          .select('*')
+          .eq('transaccion_id', trans.id)
+          .order('numero_cuota')
+        
+        if (pagosError) {
+          console.error('Error cargando pagos:', pagosError)
+          continue
+        }
+        
+        if (pagosData) {
+          pagosPorTransaccion[trans.id] = pagosData
+        }
+      }
+      
+      setPagos(pagosPorTransaccion)
+    }
+  } catch (error) {
+    console.error('Error en cargarHistorial:', error)
+  } finally {
+    setLoading(false)
   }
+}
 
   const obtenerMontoCuota = (pago: any) => {
     let montoBase = 0
