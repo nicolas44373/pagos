@@ -91,7 +91,11 @@ export default function DashboardPage() {
     }
     
     const ahora = new Date()
-    const fin = new Date(organization.trial_ends_at)
+    const fin = new Date(
+  organization.trial_ends_at.endsWith('Z') 
+    ? organization.trial_ends_at 
+    : organization.trial_ends_at + 'Z'
+)
     
     // ⭐ LOGS PARA DEBUG (puedes comentarlos después)
     console.log('🕐 Hora actual:', ahora.toISOString())

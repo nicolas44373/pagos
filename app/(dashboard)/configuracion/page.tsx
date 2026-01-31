@@ -238,7 +238,7 @@ export default function ConfiguracionPage() {
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                 <textarea
-                  placeholder="Ej: Las talitas - Tucumán, Parque Logistico 1300 - Ruta 9"
+                  placeholder="Ej: San miguel de Tucumán, Av. Roca 1234, CP 4000"
                   value={configuracion.direccion}
                   onChange={(e) => handleInputChange('direccion', e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
@@ -257,7 +257,7 @@ export default function ConfiguracionPage() {
                 <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <input
                   type="tel"
-                  placeholder="Ej: (381) 446-1795"
+                  placeholder="Ej: 381  1234-5678"
                   value={configuracion.telefono}
                   onChange={(e) => handleInputChange('telefono', e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
