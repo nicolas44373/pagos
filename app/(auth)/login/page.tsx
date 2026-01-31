@@ -218,16 +218,7 @@ export default function LoginPage() {
         </div>
         
         {/* Debug panel - SIEMPRE VISIBLE */}
-        {debugInfo.length > 0 && (
-          <div className="mt-4 p-4 bg-slate-800/90 backdrop-blur-xl rounded-xl border border-slate-700/50">
-            <p className="font-semibold mb-2 text-white text-sm">🔍 Log de Debug:</p>
-            <div className="space-y-1 font-mono text-xs">
-              {debugInfo.map((msg, i) => (
-                <div key={i} className="text-slate-300">{msg}</div>
-              ))}
-            </div>
-          </div>
-        )}
+        
       </div>
     </div>
   )
